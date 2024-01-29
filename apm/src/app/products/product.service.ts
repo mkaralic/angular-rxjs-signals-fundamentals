@@ -1,6 +1,6 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { BehaviorSubject, Observable, catchError, filter, map, of, shareReplay, switchMap, tap, throwError } from 'rxjs';
+import { BehaviorSubject, Observable, catchError, combineLatest, filter, map, of, shareReplay, switchMap, tap, throwError } from 'rxjs';
 import { Product } from './product';
 import { ProductData } from './product-data';
 import { HttpErrorService } from '../utilities/http-error.service';
@@ -26,17 +26,29 @@ export class ProductService {
     catchError(err => this.handleError(err))
   );
 
-  readonly product$ = this.productSelected$
+  readonly product1$ = this.productSelected$
     .pipe(
       filter(Boolean), // emits only non false values
       switchMap(id => {
         const productUrl = this.productsUrl + '/' + id;
         return this.http.get<Product>(productUrl)
-        .pipe(
-          switchMap(product => this.getProductWithReviews(product)),
-          catchError(err => this.handleError(err))
-        );
+          .pipe(
+            switchMap(product => this.getProductWithReviews(product)),
+            catchError(err => this.handleError(err))
+          );
       })
+    )
+
+  readonly product$ = combineLatest([
+      this.productSelected$,
+      this.products$
+    ]).pipe(
+      map(([selectedProductId, products]) =>
+        products.find(product => product.id === selectedProductId)
+      ),
+      filter(Boolean), // emits only non false values
+      switchMap(product => this.getProductWithReviews(product)),
+      catchError(err => this.handleError(err))
     )
 
   productSelected(selectedProductId: number): void {
@@ -44,10 +56,10 @@ export class ProductService {
   }
 
   getProductWithReviews(product: Product): Observable<Product> {
-    if(product.hasReviews) {
+    if (product.hasReviews) {
       return this.http.get<Review[]>(this.reviewService.getReviewUrl(product.id))
-      .pipe(
-        map(reviews => ({...product, reviews} as Product)))
+        .pipe(
+          map(reviews => ({ ...product, reviews } as Product)))
     } else {
       return of(product)
     }
